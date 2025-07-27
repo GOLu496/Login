@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login with Facebook</title>
+  <meta charset="UTF-8">
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+  <script src="https://connect.facebook.net/en_US/sdk.js"></script>
+</head>
+<body>
+  <h2>Login with Facebook</h2>
+  <button onclick="loginWithFacebook()">Login with Facebook</button>
+
+  <script>
+    // ✅ YOUR FIREBASE CONFIG HERE
+    const firebaseConfig = {
+    apiKey: "AIzaSyC100i-P3BxKAe6dmN1dI2OGC8DNpTpW2k",
+  authDomain: "numerix-80316.firebaseapp.com",
+  databaseURL: "https://numerix-80316-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "numerix-80316",
+  storageBucket: "numerix-80316.firebasestorage.app",
+  messagingSenderId: "441337086133",
+  appId: "1:441337086133:web:5fcc3e85f381601821fefc",
+  measurementId: "G-K291MLNV2W"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ✅ FACEBOOK SDK INIT
+    window.fbAsyncInit = function () {
+      FB.init({
+        appId: '4071062446484032',
+        cookie: true,
+        xfbml: true,
+        version: 'v19.0'
+      });
+    };
+
+    function loginWithFacebook() {
+      FB.login(function (response) {
+        if (response.authResponse) {
+          FB.api('/me', { fields: 'id,name,email,picture' }, function (userData) {
+            const userId = userData.id;
+            const user = {
+              name: userData.name || '',
+              email: userData.email || '',
+              profile_pic: userData.picture?.data?.url || '',
+              login_method: 'facebook',
+              timestamp: Date.now()
+            };
+
+            // ✅ Save to Firebase
+            firebase.database().ref('users/' + userId).set(user)
+              .then(() => {
+                // ✅ Send to Kodular via WebView
+                window.ReactNativeWebView?.postMessage(JSON.stringify({
+                  success: true,
+                  user
+                }));
+              })
+              .catch((error) => {
+                window.ReactNativeWebView?.postMessage(JSON.stringify({
+                  success: false,
+                  error: error.message
+                }));
+              });
+          });
+        } else {
+          alert("Facebook login failed");
+        }
+      }, { scope: 'public_profile,email' });
+    }
+  </script>
+</body>
+</html>
