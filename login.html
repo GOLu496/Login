@@ -1,76 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Login with Facebook</title>
-  <meta charset="UTF-8">
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
-  <script src="https://connect.facebook.net/en_US/sdk.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Flappy Bird</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    canvas { background: skyblue; display: block; margin: auto; }
+    #score { 
+      position: absolute; 
+      top: 10px; left: 50%; 
+      transform: translateX(-50%); 
+      font-family: sans-serif; 
+      font-size: 24px; 
+      font-weight: bold; 
+      color: #fff; 
+      text-shadow: 1px 1px 2px #000;
+    }
+  </style>
 </head>
 <body>
-  <h2>Login with Facebook</h2>
-  <button onclick="loginWithFacebook()">Login with Facebook</button>
+  <div id="score">Score: 0</div>
+  <canvas id="game" width="320" height="480"></canvas>
 
   <script>
-    // ✅ YOUR FIREBASE CONFIG HERE
-    const firebaseConfig = {
-    apiKey: "",
-  authDomain: "numerix-80om",
-  databaseURL: "https://numerix-8031edatabase.app",
-  projectId: "numerix-80316",
-  storageBucket: "numerix-80316.firebasestorage.app",
-  messagingSenderId: "441337086133",
-  appId: "1:441337086133:821fefc",
-  measurementId: "G-KNV2W"
-};
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    let frames = 0;
+    let score = 0;
+    let best = 0;
+    const gravity = 0.25;
+    const jump = 4.6;
 
-    // ✅ FACEBOOK SDK INIT
-    window.fbAsyncInit = function () {
-      FB.init({
-        appId: '40032',
-        cookie: true,
-        xfbml: true,
-        version: 'v19.0'
-      });
+    const bird = {
+      x: 50,
+      y: 150,
+      w: 30,
+      h: 30,
+      velocity: 0,
+      draw() {
+        ctx.fillStyle = "yellow";
+        ctx.fillRect(this.x, this.y, this.w, this.h);
+      },
+      flap() {
+        this.velocity = -jump;
+      },
+      update() {
+        this.velocity += gravity;
+        this.y += this.velocity;
+
+        if (this.y + this.h >= canvas.height) {
+          resetGame();
+        }
+      }
     };
 
-    function loginWithFacebook() {
-      FB.login(function (response) {
-        if (response.authResponse) {
-          FB.api('/me', { fields: 'id,name,email,picture' }, function (userData) {
-            const userId = userData.id;
-            const user = {
-              name: userData.name || '',
-              email: userData.email || '',
-              profile_pic: userData.picture?.data?.url || '',
-              login_method: 'facebook',
-              timestamp: Date.now()
-            };
+    const pipes = [];
+    const pipeWidth = 50;
+    const pipeGap = 100;
 
-            // ✅ Save to Firebase
-            firebase.database().ref('users/' + userId).set(user)
-              .then(() => {
-                // ✅ Send to Kodular via WebView
-                window.ReactNativeWebView?.postMessage(JSON.stringify({
-                  success: true,
-                  user
-                }));
-              })
-              .catch((error) => {
-                window.ReactNativeWebView?.postMessage(JSON.stringify({
-                  success: false,
-                  error: error.message
-                }));
-              });
-          });
-        } else {
-          alert("Facebook login failed");
-        }
-      }, { scope: 'public_profile,email' });
+    function drawPipe(pipe) {
+      ctx.fillStyle = "green";
+      ctx.fillRect(pipe.x, 0, pipeWidth, pipe.top);
+      ctx.fillRect(pipe.x, pipe.top + pipeGap, pipeWidth, canvas.height);
     }
+
+    function resetGame() {
+      pipes.length = 0;
+      score = 0;
+      bird.y = 150;
+      bird.velocity = 0;
+    }
+
+    function updatePipes() {
+      if (frames % 90 === 0) {
+        const top = Math.floor(Math.random() * 200) + 50;
+        pipes.push({ x: canvas.width, top });
+      }
+
+      pipes.forEach(pipe => {
+        pipe.x -= 2;
+
+        // collision
+        if (
+          bird.x < pipe.x + pipeWidth &&
+          bird.x + bird.w > pipe.x &&
+          (bird.y < pipe.top || bird.y + bird.h > pipe.top + pipeGap)
+        ) {
+          resetGame();
+        }
+
+        // scoring
+        if (pipe.x + pipeWidth === bird.x) {
+          score++;
+        }
+      });
+
+      pipes.filter(p => p.x + pipeWidth > 0);
+    }
+
+    function drawPipes() {
+      pipes.forEach(drawPipe);
+    }
+
+    function loop() {
+      frames++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      bird.update();
+      updatePipes();
+
+      drawPipes();
+      bird.draw();
+
+      scoreEl.textContent = `Score: ${score}`;
+
+      requestAnimationFrame(loop);
+    }
+
+    document.addEventListener("keydown", bird.flap.bind(bird));
+    document.addEventListener("click", bird.flap.bind(bird));
+
+    loop();
   </script>
 </body>
 </html>
