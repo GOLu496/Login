@@ -122,3 +122,8 @@
 
     document.addEventListener("keydown", bird.flap.bind(bird));
     document.addEventListener("click", bird.flap.bind(bird));
+
+    loop();
+  </script>
+</body>
+</html>
