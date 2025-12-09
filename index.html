@@ -1,138 +1,214 @@
 <!DOCTYPE html>
-<html>
+<html lang="hi">
 <head>
-    <title>Ultra Accurate Image Marker Map</title>
-    <meta name="viewport" content="initial-scale=1, width=device-width">
-
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>कैमरा और पॉइंट आधारित साइज़ मापन</title>
     <style>
-        #map { height: 500px; width: 100%; }
-        #zoomBox {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 9999;
-            background: white;
-            padding: 5px 12px;
-            border: 1px solid #000;
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 10px;
+            background-color: #f0f2f5;
         }
-        body { font-family: Arial; padding: 10px; }
-        .info { margin-top: 10px; font-size: 18px; }
-        .label { font-weight: bold; }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto 15px;
+            border: 3px solid #007bff;
+            border-radius: 8px;
+            overflow: hidden;
+            background: black;
+        }
+        #video, #canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        #canvas {
+            cursor: crosshair; /* पॉइंट लगाने के लिए कर्सर */
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        #captureButton {
+            background-color: #007bff;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 1.1em;
+            color: #333;
+            font-weight: bold;
+        }
+        .point {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: none; /* क्लिक को कैनवस पर पास करने देता है */
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
     </style>
 </head>
-
 <body>
 
-<div id="zoomBox">Zoom: 100%</div>
-<div id="map"></div>
+    <h1>📏 पॉइंट-टू-पॉइंट मापन उपकरण</h1>
+    <p>पहले तस्वीर कैप्चर करें, फिर मापन के लिए **दो बिंदु** चिह्नित करें।</p>
 
-<div class="info"><span class="label">City:</span> <span id="city">None</span></div>
-<div class="info"><span class="label">State:</span> <span id="state">None</span></div>
-<div class="info"><span class="label">Country:</span> <span id="country">None</span></div>
-<div class="info"><span class="label">Landmark:</span> <span id="landmark">None</span></div>
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <button id="captureButton">1. तस्वीर कैप्चर करें</button>
+    <button id="resetButton" style="display:none;">मापन रीसेट करें</button>
 
-<script>
-    // -----------------------------
-    // MAP INITIALIZATION
-    // -----------------------------
-    var map = L.map("map", { zoomSnap: 0.1 }).setView([20.59, 78.96], 5);
+    <p id="result">परिणाम यहाँ दिखेगा।</p>
+    <p style="font-size: 0.9em; color: #6c757d;">(मापन पिक्सेल में होगा। वास्तविक दुनिया की दूरी के लिए संदर्भ वस्तु आवश्यक है।)</p>
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 })
-    .addTo(map);
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const captureButton = document.getElementById('captureButton');
+        const resetButton = document.getElementById('resetButton');
+        const result = document.getElementById('result');
+        const videoContainer = document.getElementById('video-container');
 
-    var clickMarker = null;
+        let points = [];
+        let isCaptured = false;
 
-    // -----------------------------
-    // 🔥 GOOGLE-LEVEL ACCURACY (MapTiler API)
-    // -----------------------------
-    const API_KEY = "KkZ2QHYG4u2P4p3HRxqO";
-
-
-    // -----------------------------
-    // 🔥 FUNCTION TO ADD IMAGE MARKERS
-    // -----------------------------
-    function addImageMarker(lat, lng, imgURL, minZoom = 13) {
-
-        let icon = L.icon({
-            iconUrl: imgURL,
-            iconSize: [45, 45],
-            iconAnchor: [22, 45]
-        });
-
-        let marker = null;
-
-        function updateVisibility() {
-            if (map.getZoom() >= minZoom) {
-                if (!marker) marker = L.marker([lat, lng], { icon: icon }).addTo(map);
-            } else {
-                if (marker) { map.removeLayer(marker); marker = null; }
-            }
+        // --- 1. कैमरा एक्सेस शुरू करना ---
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then((stream) => {
+                    video.srcObject = stream;
+                    video.style.display = 'block';
+                    result.textContent = 'कैमरा शुरू हो गया है। अब तस्वीर कैप्चर करें।';
+                })
+                .catch((err) => {
+                    result.textContent = '⚠️ कैमरा एक्सेस विफल: अनुमति दें और पुनः प्रयास करें।';
+                    console.error('कैमरा एक्सेस विफल:', err);
+                });
         }
 
-        map.on("zoomend", updateVisibility);
-        updateVisibility();
-    }
+        // --- 2. कैप्चर बटन इवेंट ---
+        captureButton.addEventListener('click', () => {
+            if (!video.srcObject) return;
 
+            // वीडियो फीड को कैनवस पर ड्रा करें
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // -----------------------------
-    // 🔥 ADD YOUR FIXED IMAGE MARKERS HERE
-    // -----------------------------
-    // Example 1 → Delhi = chest icon
-    addImageMarker(28.6139, 77.2090, "1.jpg", 13);
+            // UI अपडेट करें
+            video.style.display = 'none'; // वीडियो फीड छुपाएँ
+            canvas.style.display = 'block'; // कैनवस दिखाएँ (कैप्चर की गई इमेज)
+            captureButton.style.display = 'none';
+            resetButton.style.display = 'inline-block';
+            isCaptured = true;
+            result.textContent = '2. मापन शुरू करने के लिए तस्वीर पर दो बिंदु क्लिक करें।';
+            
+            // कंटेनर साइज़ कैनवस साइज़ के अनुरूप सेट करें
+            videoContainer.style.maxWidth = canvas.width + 'px';
+        });
 
-    // Example 2 → Mumbai = devil image
-    addImageMarker(19.0760, 72.8777, "2.jpg", 14);
+        // --- 3. कैनवस पर क्लिक करके पॉइंट लगाना ---
+        canvas.addEventListener('click', (event) => {
+            if (!isCaptured || points.length >= 2) return;
 
-    // You can add unlimited markers like this:
-    // addImageMarker(LAT, LNG, "IMAGE_URL", MIN_ZOOM);
+            // कैनवस पर क्लिक की गई स्थिति प्राप्त करें
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            // कैनवस के पिक्सेल निर्देशांक
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            points.push({ x, y });
+            
+            // पॉइंट को UI पर दिखाना (HTML Div के रूप में)
+            const pointDiv = document.createElement('div');
+            pointDiv.className = 'point';
+            // CSS के लिए सापेक्ष (relative) स्थिति
+            pointDiv.style.left = ((event.clientX - rect.left) / rect.width) * 100 + '%';
+            pointDiv.style.top = ((event.clientY - rect.top) / rect.height) * 100 + '%';
+            videoContainer.appendChild(pointDiv);
 
+            if (points.length === 1) {
+                result.textContent = 'दूसरा बिंदु क्लिक करें।';
+            } else if (points.length === 2) {
+                calculateDistance();
+            }
+        });
 
-    // -----------------------------
-    // 🔵 CLICK → BLUE PIN + LOCATION DETAILS
-    // -----------------------------
-    map.on("click", function(e) {
-        var lat = e.latlng.lat;
-        var lng = e.latlng.lng;
+        // --- 4. दूरी की गणना करना ---
+        function calculateDistance() {
+            if (points.length !== 2) return;
 
-        if (clickMarker) map.removeLayer(clickMarker);
-        clickMarker = L.marker([lat, lng]).addTo(map);
+            const p1 = points[0];
+            const p2 = points[1];
 
-        let url = `https://api.maptiler.com/geocoding/${lng},${lat}.json?key=${API_KEY}`;
+            // पाइथागोरस प्रमेय का उपयोग करके पिक्सेल दूरी की गणना: $D = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$
+            const distancePixels = Math.sqrt(
+                Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)
+            );
 
-        fetch(url)
-            .then(r => r.json())
-            .then(d => {
-                if (!d.features.length) return;
+            // कैनवस पर मापी गई दूरी को ड्रा करें
+            context.beginPath();
+            context.moveTo(p1.x, p1.y);
+            context.lineTo(p2.x, p2.y);
+            context.strokeStyle = 'lime';
+            context.lineWidth = 3;
+            context.stroke();
 
-                let props = d.features[0].properties;
+            // परिणाम डिस्प्ले
+            let output = `✅ मापी गई लंबाई: **${distancePixels.toFixed(2)} पिक्सेल**`;
 
-                document.getElementById("city").innerText =
-                    props.locality || props.city || props.town || "Not Found";
+            // ** वास्तविक दुनिया की माप के लिए यहाँ कोड जोड़ें **
+            // यदि आपके पास फ्रेम में 5cm की ज्ञात संदर्भ वस्तु है जो 100 पिक्सेल कवर करती है:
+            // const knownReferenceCm = 5;
+            // const referencePixels = 100;
+            // const conversionFactor = knownReferenceCm / referencePixels;
+            // const distanceCm = distancePixels * conversionFactor;
+            // output += `<br>अनुमानित लंबाई: **${distanceCm.toFixed(2)} cm** (संदर्भ वस्तु के आधार पर)`;
+            // ** **
 
-                document.getElementById("state").innerText =
-                    props.region || "Not Found";
+            result.innerHTML = output;
+        }
 
-                document.getElementById("country").innerText =
-                    props.country || "Not Found";
+        // --- 5. रीसेट फंक्शन ---
+        resetButton.addEventListener('click', () => {
+            // पॉइंट रीसेट करें
+            points = [];
+            // UI रीसेट करें
+            isCaptured = false;
+            context.clearRect(0, 0, canvas.width, canvas.height); // कैनवस साफ करें
+            canvas.style.display = 'none';
+            video.style.display = 'block';
+            captureButton.style.display = 'inline-block';
+            resetButton.style.display = 'none';
+            result.textContent = 'मापन रीसेट कर दिया गया। फिर से शुरू करने के लिए तस्वीर कैप्चर करें।';
 
-                document.getElementById("landmark").innerText =
-                    props.name || props.street || props.neighbourhood || "Not Found";
-            });
-    });
+            // सभी पॉइंट Divs हटाएँ
+            document.querySelectorAll('.point').forEach(p => p.remove());
+        });
 
-
-    // -----------------------------
-    // 🔍 ZOOM PERCENT BOX
-    // -----------------------------
-    map.on("zoomend", () => {
-        let pct = Math.round((map.getZoom() / 13) * 200);
-        document.getElementById("zoomBox").innerText = "Zoom: " + pct + "%";
-    });
-</script>
+        // पेज लोड होने पर कैमरा शुरू करें
+        startCamera();
+    </script>
 
 </body>
 </html>
