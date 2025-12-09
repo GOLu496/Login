@@ -3,23 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>कैमरा और पॉइंट आधारित साइज़ मापन</title>
+    <title>एडवांस्ड पॉइंट-टू-पॉइंट मापन उपकरण</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             text-align: center;
             padding: 10px;
-            background-color: #f0f2f5;
+            background-color: #f5f7fa;
+            color: #333;
         }
+        h1 { color: #007bff; }
         #video-container {
             position: relative;
             width: 100%;
             max-width: 600px;
-            margin: 0 auto 15px;
-            border: 3px solid #007bff;
-            border-radius: 8px;
+            margin: 15px auto;
+            border: 4px solid #007bff;
+            border-radius: 12px;
             overflow: hidden;
             background: black;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
         #video, #canvas {
             width: 100%;
@@ -27,187 +30,304 @@
             display: block;
         }
         #canvas {
-            cursor: crosshair; /* पॉइंट लगाने के लिए कर्सर */
+            cursor: crosshair;
         }
-        button {
-            padding: 10px 20px;
+        button, input[type="number"] {
+            padding: 10px 15px;
             font-size: 16px;
-            cursor: pointer;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             margin: 5px;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        #testButton {
+            background-color: #ffc107;
+            color: #333;
+            border: none;
         }
         #captureButton {
             background-color: #007bff;
+            color: white;
+            border: none;
+        }
+        #resetButton {
+            background-color: #dc3545;
+            color: white;
+            border: none;
         }
         #result {
             margin-top: 20px;
-            font-size: 1.1em;
-            color: #333;
-            font-weight: bold;
+            padding: 15px;
+            font-size: 1.2em;
+            color: #28a745;
+            background-color: #e2f0e6;
+            border-radius: 8px;
+            display: inline-block;
+            max-width: 600px;
         }
         .point {
             position: absolute;
-            width: 10px;
-            height: 10px;
+            width: 16px;
+            height: 16px;
             background-color: red;
-            border: 2px solid white;
+            border: 3px solid white;
             border-radius: 50%;
-            pointer-events: none; /* क्लिक को कैनवस पर पास करने देता है */
+            pointer-events: none;
             transform: translate(-50%, -50%);
             z-index: 10;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        #reference-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px dashed #6c757d;
+            border-radius: 8px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            background-color: #fff;
         }
     </style>
 </head>
 <body>
 
-    <h1>📏 पॉइंट-टू-पॉइंट मापन उपकरण</h1>
-    <p>पहले तस्वीर कैप्चर करें, फिर मापन के लिए **दो बिंदु** चिह्नित करें।</p>
+    <h1>📏 कैमरा मापन उपकरण (cm/inch में)</h1>
+    <p>पाइथागोरस प्रमेय का उपयोग करके दो बिंदुओं के बीच की दूरी मापी जाएगी।</p>
+
+    <div id="reference-section">
+        <h3>रेफरेंस साइज़ सेट करें</h3>
+        <p>फ़्रेम में रखी किसी ज्ञात वस्तु (जैसे स्केल या सिक्का) की **वास्तविक चौड़ाई** दर्ज करें।</p>
+        <input type="number" id="refSize" placeholder="उदाहरण: 5" value="5" min="0.1">
+        <select id="unit">
+            <option value="cm">cm (सेंटीमीटर)</option>
+            <option value="inch">inch (इंच)</option>
+        </select>
+        <button id="setRefButton" disabled>रेफरेंस पॉइंट 1</button>
+        <p style="font-size: 0.9em; margin-top: 10px;">*पॉइंट 1 और 2 के बीच की दूरी को रेफरेंस साइज़ माना जाएगा।*</p>
+    </div>
 
     <div id="video-container">
-        <video id="video" autoplay playsinline></video>
+        <video id="video" autoplay playsinline style="display:none;"></video>
         <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
-    <button id="captureButton">1. तस्वीर कैप्चर करें</button>
-    <button id="resetButton" style="display:none;">मापन रीसेट करें</button>
+    <button id="testButton">1. ⚡ कैमरा एक्सेस टेस्ट करें</button>
+    <button id="captureButton" style="display:none;">2. तस्वीर कैप्चर करें</button>
+    <button id="resetButton" style="display:none;">सब कुछ रीसेट करें</button>
 
-    <p id="result">परिणाम यहाँ दिखेगा।</p>
-    <p style="font-size: 0.9em; color: #6c757d;">(मापन पिक्सेल में होगा। वास्तविक दुनिया की दूरी के लिए संदर्भ वस्तु आवश्यक है।)</p>
-
+    <p id="result">टेस्टिंग शुरू करने के लिए 'कैमरा एक्सेस टेस्ट करें' बटन पर क्लिक करें।</p>
+    
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const context = canvas.getContext('2d');
+        const testButton = document.getElementById('testButton');
         const captureButton = document.getElementById('captureButton');
         const resetButton = document.getElementById('resetButton');
+        const setRefButton = document.getElementById('setRefButton');
         const result = document.getElementById('result');
         const videoContainer = document.getElementById('video-container');
+        const refSizeInput = document.getElementById('refSize');
+        const unitSelect = document.getElementById('unit');
 
         let points = [];
+        let referencePoints = [];
         let isCaptured = false;
+        let conversionFactor = null; // यह पिक्सेल को cm/inch में बदलने वाला कारक है।
 
-        // --- 1. कैमरा एक्सेस शुरू करना ---
+        // --- 1. कैमरा एक्सेस ---
         function startCamera() {
+            //... (पहले जैसा ही कैमरा लॉजिक, जिसे टेस्ट बटन ट्रिगर करेगा)
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                result.textContent = '⚠️ त्रुटि: आपका ब्राउज़र MediaDevices API का समर्थन नहीं करता है।';
+                return;
+            }
+
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                 .then((stream) => {
                     video.srcObject = stream;
                     video.style.display = 'block';
-                    result.textContent = 'कैमरा शुरू हो गया है। अब तस्वीर कैप्चर करें।';
+                    testButton.style.display = 'none';
+                    captureButton.style.display = 'inline-block';
+                    setRefButton.disabled = false; // कैमरा चालू होने पर रेफरेंस बटन सक्षम करें
+                    result.innerHTML = '✅ कैमरा शुरू हो गया है। <b>तस्वीर कैप्चर करें।</b>';
+                    canvas.style.display = 'none';
+                    resetButton.style.display = 'none';
+                    isCaptured = false;
+                    points = [];
+                    referencePoints = [];
+                    document.querySelectorAll('.point').forEach(p => p.remove());
                 })
                 .catch((err) => {
-                    result.textContent = '⚠️ कैमरा एक्सेस विफल: अनुमति दें और पुनः प्रयास करें।';
-                    console.error('कैमरा एक्सेस विफल:', err);
+                    console.error('कैमरा एक्सेस विफल हुआ:', err);
+                    result.innerHTML = '🚫 कैमरा एक्सेस अस्वीकृत या त्रुटि।';
                 });
         }
+        testButton.addEventListener('click', startCamera);
 
         // --- 2. कैप्चर बटन इवेंट ---
         captureButton.addEventListener('click', () => {
             if (!video.srcObject) return;
 
-            // वीडियो फीड को कैनवस पर ड्रा करें
+            // वीडियो फ्रेम को कैनवस पर ड्रा करें
             canvas.width = video.videoWidth || 640;
             canvas.height = video.videoHeight || 480;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // UI अपडेट करें
-            video.style.display = 'none'; // वीडियो फीड छुपाएँ
-            canvas.style.display = 'block'; // कैनवस दिखाएँ (कैप्चर की गई इमेज)
+            // UI अपडेट
+            video.style.display = 'none';
+            canvas.style.display = 'block';
             captureButton.style.display = 'none';
             resetButton.style.display = 'inline-block';
             isCaptured = true;
-            result.textContent = '2. मापन शुरू करने के लिए तस्वीर पर दो बिंदु क्लिक करें।';
             
-            // कंटेनर साइज़ कैनवस साइज़ के अनुरूप सेट करें
             videoContainer.style.maxWidth = canvas.width + 'px';
-        });
 
-        // --- 3. कैनवस पर क्लिक करके पॉइंट लगाना ---
-        canvas.addEventListener('click', (event) => {
-            if (!isCaptured || points.length >= 2) return;
-
-            // कैनवस पर क्लिक की गई स्थिति प्राप्त करें
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            
-            // कैनवस के पिक्सेल निर्देशांक
-            const x = (event.clientX - rect.left) * scaleX;
-            const y = (event.clientY - rect.top) * scaleY;
-            
-            points.push({ x, y });
-            
-            // पॉइंट को UI पर दिखाना (HTML Div के रूप में)
-            const pointDiv = document.createElement('div');
-            pointDiv.className = 'point';
-            // CSS के लिए सापेक्ष (relative) स्थिति
-            pointDiv.style.left = ((event.clientX - rect.left) / rect.width) * 100 + '%';
-            pointDiv.style.top = ((event.clientY - rect.top) / rect.height) * 100 + '%';
-            videoContainer.appendChild(pointDiv);
-
-            if (points.length === 1) {
-                result.textContent = 'दूसरा बिंदु क्लिक करें।';
-            } else if (points.length === 2) {
-                calculateDistance();
+            if (conversionFactor === null) {
+                result.innerHTML = '2. पहले **रेफरेंस साइज़** सेट करने के लिए **दो बिंदु** चिह्नित करें।';
+            } else {
+                 result.innerHTML = '2. मापन शुरू करने के लिए तस्वीर पर **दो बिंदु** क्लिक करें।';
             }
         });
 
-        // --- 4. दूरी की गणना करना ---
+        // --- 3. पॉइंट मार्किंग (Reference और Measurement दोनों के लिए) ---
+        function markPoint(x, y) {
+            // UI पर पॉइंट दिखाएँ
+            const rect = canvas.getBoundingClientRect();
+            const pointDiv = document.createElement('div');
+            pointDiv.className = 'point';
+            pointDiv.style.left = ((x / canvas.width) * rect.width / rect.width) * 100 + '%';
+            pointDiv.style.top = ((y / canvas.height) * rect.height / rect.height) * 100 + '%';
+            videoContainer.appendChild(pointDiv);
+            return { x, y, div: pointDiv };
+        }
+
+        canvas.addEventListener('click', (event) => {
+            if (!isCaptured) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            
+            // रेफरेंस साइज़ सेट करने का मोड
+            if (setRefButton.disabled === false && setRefButton.textContent.includes('रेफरेंस')) {
+                if (referencePoints.length < 2) {
+                    referencePoints.push({ x, y });
+                    markPoint(x, y);
+
+                    if (referencePoints.length === 1) {
+                        setRefButton.textContent = 'रेफरेंस पॉइंट 2';
+                        result.textContent = 'रेफरेंस साइज़ के लिए दूसरा पॉइंट क्लिक करें।';
+                    } else if (referencePoints.length === 2) {
+                        calculateReference();
+                        setRefButton.textContent = 'रेफरेंस सेट ✅';
+                        setRefButton.disabled = true;
+                        result.innerHTML = `रेफरेंस सेट! अब मापन के लिए **दो बिंदु** चिह्नित करें।`;
+                    }
+                }
+                return;
+            }
+
+            // सामान्य मापन मोड
+            if (points.length < 2) {
+                points.push(markPoint(x, y));
+
+                if (points.length === 1) {
+                    result.textContent = 'मापन के लिए दूसरा बिंदु क्लिक करें।';
+                } else if (points.length === 2) {
+                    calculateDistance();
+                }
+            }
+        });
+
+        // --- 4. रेफरेंस फैक्टर की गणना ---
+        function calculateReference() {
+            const pR1 = referencePoints[0];
+            const pR2 = referencePoints[1];
+            const refDistancePixels = Math.sqrt(
+                Math.pow(pR2.x - pR1.x, 2) + Math.pow(pR2.y - pR1.y, 2)
+            );
+            
+            const actualRefSize = parseFloat(refSizeInput.value);
+            
+            if (refDistancePixels > 0 && !isNaN(actualRefSize)) {
+                // यह मुख्य रूपांतरण कारक है: (वास्तविक साइज़) / (पिक्सेल साइज़)
+                conversionFactor = actualRefSize / refDistancePixels;
+            }
+
+             // कैनवस पर रेफरेंस लाइन खींचना
+            context.beginPath();
+            context.moveTo(pR1.x, pR1.y);
+            context.lineTo(pR2.x, pR2.y);
+            context.strokeStyle = 'yellow';
+            context.lineWidth = 4;
+            context.stroke();
+        }
+
+        // --- 5. दूरी की गणना करना ---
         function calculateDistance() {
             if (points.length !== 2) return;
 
             const p1 = points[0];
             const p2 = points[1];
 
-            // पाइथागोरस प्रमेय का उपयोग करके पिक्सेल दूरी की गणना: $D = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$
             const distancePixels = Math.sqrt(
                 Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)
             );
 
-            // कैनवस पर मापी गई दूरी को ड्रा करें
+            // कैनवस पर मापी गई लाइन ड्रा करना
             context.beginPath();
             context.moveTo(p1.x, p1.y);
             context.lineTo(p2.x, p2.y);
             context.strokeStyle = 'lime';
-            context.lineWidth = 3;
+            context.lineWidth = 4;
             context.stroke();
 
             // परिणाम डिस्प्ले
-            let output = `✅ मापी गई लंबाई: **${distancePixels.toFixed(2)} पिक्सेल**`;
+            let output = `✅ मापी गई दूरी: **${distancePixels.toFixed(2)} पिक्सेल**`;
 
-            // ** वास्तविक दुनिया की माप के लिए यहाँ कोड जोड़ें **
-            // यदि आपके पास फ्रेम में 5cm की ज्ञात संदर्भ वस्तु है जो 100 पिक्सेल कवर करती है:
-            // const knownReferenceCm = 5;
-            // const referencePixels = 100;
-            // const conversionFactor = knownReferenceCm / referencePixels;
-            // const distanceCm = distancePixels * conversionFactor;
-            // output += `<br>अनुमानित लंबाई: **${distanceCm.toFixed(2)} cm** (संदर्भ वस्तु के आधार पर)`;
-            // ** **
+            if (conversionFactor !== null) {
+                const distanceReal = distancePixels * conversionFactor;
+                const selectedUnit = unitSelect.value;
+                output += `<br>📏 **वास्तविक लंबाई:** **${distanceReal.toFixed(2)} ${selectedUnit}**`;
+            } else {
+                output += `<br><span style="color:red;">रेफरेंस साइज़ सेट करें ताकि यह ${unitSelect.value} में गणना कर सके।</span>`;
+            }
 
             result.innerHTML = output;
         }
-
-        // --- 5. रीसेट फंक्शन ---
+        
+        // --- 6. रीसेट फंक्शन ---
         resetButton.addEventListener('click', () => {
-            // पॉइंट रीसेट करें
+            // सभी मापन रीसेट करें
             points = [];
-            // UI रीसेट करें
+            referencePoints = [];
+            conversionFactor = null;
             isCaptured = false;
-            context.clearRect(0, 0, canvas.width, canvas.height); // कैनवस साफ करें
-            canvas.style.display = 'none';
-            video.style.display = 'block';
-            captureButton.style.display = 'inline-block';
-            resetButton.style.display = 'none';
-            result.textContent = 'मापन रीसेट कर दिया गया। फिर से शुरू करने के लिए तस्वीर कैप्चर करें।';
+            
+            // UI वापस शुरुआती स्थिति में
+            // (स्ट्रीम बंद करने का लॉजिक पहले की तरह ही रहेगा)
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
 
-            // सभी पॉइंट Divs हटाएँ
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            video.style.display = 'none';
+            canvas.style.display = 'none';
+            testButton.style.display = 'inline-block';
+            captureButton.style.display = 'none';
+            resetButton.style.display = 'none';
+            setRefButton.disabled = true;
+            setRefButton.textContent = 'रेफरेंस पॉइंट 1';
+            result.textContent = 'मापन रीसेट कर दिया गया। फिर से शुरू करने के लिए टेस्ट बटन दबाएँ।';
+
             document.querySelectorAll('.point').forEach(p => p.remove());
         });
-
-        // पेज लोड होने पर कैमरा शुरू करें
-        startCamera();
     </script>
 
 </body>
